@@ -83,7 +83,7 @@ async function playStream(query, connection, channel) {
     }
 }
 
-client.once('clientReady', async () => {
+client.once('ready', async () => {
     console.log(`🚀 Bot ${client.user.tag} đã sẵn sàng hoạt động!`);
 });
 
