@@ -1,16 +1,13 @@
 {
   "name": "lunaa-bot",
   "version": "1.0.0",
-  "description": "Lunaa Music Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@distube/ytdl-core": "^1.3.5",
+    "@distube/ytdl-core": "latest",
     "@discordjs/voice": "^0.17.0",
-    "discord.js": "^14.14.0",
-    "sodium-native": "^4.1.1",
-    "libsodium-wrappers": "^1.0.15"
+    "discord.js": "^14.14.0"
   }
 }
