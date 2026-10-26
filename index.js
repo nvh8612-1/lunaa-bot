@@ -36,12 +36,10 @@ async function playStream(query, connection, channel) {
 
         console.log('[STREAM] Đang tải luồng play-dl từ:', cleanUrl);
         
-        // Kiểm tra link YouTube hợp lệ
         if (play.yt_validate(cleanUrl) !== 'video') {
             return channel.send('❌ Link YouTube không hợp lệ hoặc không phải video!').catch(() => {});
         }
 
-        // Lấy stream audio cực mượt bằng play-dl
         let streamData = await play.stream(cleanUrl, {
             discordPlayerCompatibility: true,
             quality: 2
@@ -76,8 +74,9 @@ async function playStream(query, connection, channel) {
     }
 }
 
+// Bắt sự kiện bot đã sẵn sàng kết nối
 client.once('ready', () => {
-    console.log(`✅ BOT LUNAA ĐÃ ONLINE THÀNH CÔNG: ${client.user.tag}`);
+    console.log(`✅ CON BOT LUNAA ĐÃ ONLINE THÀNH CÔNG: ${client.user.tag}`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -168,4 +167,5 @@ client.on('messageCreate', async (message) => {
     }
 });
 
+// ĐOẠN CUỐI QUAN TRỌNG ĐÂY: Đăng nhập bot vào Discord
 client.login(process.env.DISCORD_TOKEN);
