@@ -74,7 +74,6 @@ async function playStream(query, connection, channel) {
     }
 }
 
-// Bắt sự kiện bot đã sẵn sàng kết nối
 client.once('ready', () => {
     console.log(`✅ CON BOT LUNAA ĐÃ ONLINE THÀNH CÔNG: ${client.user.tag}`);
 });
@@ -167,5 +166,12 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// ĐOẠN CUỐI QUAN TRỌNG ĐÂY: Đăng nhập bot vào Discord
-client.login(process.env.DISCORD_TOKEN);
+// ĐĂNG NHẬP BOT VÀO DISCORD (Đặt chuẩn ở dòng cuối cùng ngoài cùng)
+console.log('Đang tiến hành kết nối bot với Discord...');
+client.login(process.env.DISCORD_TOKEN)
+    .then(() => {
+        console.log('✅ Lệnh login đã được chấp nhận bởi Discord!');
+    })
+    .catch((error) => {
+        console.error('❌ LỖI LOGIN THỰC TẾ:', error);
+    });
