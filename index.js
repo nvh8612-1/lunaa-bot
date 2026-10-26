@@ -1,7 +1,9 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
 const http = require('http');
+const play = require('play-dl');
 
+// Web Server 24/7 cho Render
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot Lunaa is alive!');
@@ -10,9 +12,6 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`HTTP server đang chạy trên cổng ${PORT}`);
 });
-
-const ytdlModule = require('@distube/ytdl-core');
-const ytdl = typeof ytdlModule === 'function' ? ytdlModule : (ytdlModule.Ytdl || ytdlModule.default || ytdlModule);
 
 process.on('unhandledRejection', (err) => console.log('Lỗi Unhandled:', err));
 process.on('uncaughtException', (err) => console.log('Lỗi Uncaught:', err));
@@ -35,27 +34,21 @@ async function playStream(query, connection, channel) {
         let cleanUrl = query.trim();
         if (!cleanUrl.startsWith('http')) return;
 
-        console.log('[STREAM] Đang tải luồng ytdl từ:', cleanUrl);
+        console.log('[STREAM] Đang tải luồng play-dl từ:', cleanUrl);
         
-        let stream;
-        const options = {
-            filter: format => format.hasAudio && !format.hasVideo,
-            highWaterMark: 1 << 25
-        };
-
-        try {
-            if (typeof ytdl === 'function') {
-                stream = ytdl(cleanUrl, options);
-            } else {
-                const ytdlInstance = new ytdlModule.Ytdl();
-                stream = ytdlInstance.download(cleanUrl, options);
-            }
-        } catch (e) {
-            const ytdlInstance = new ytdlModule.Ytdl();
-            stream = ytdlInstance.download(cleanUrl, options);
+        // Kiểm tra link YouTube hợp lệ
+        if (play.yt_validate(cleanUrl) !== 'video') {
+            return channel.send('❌ Link YouTube không hợp lệ hoặc không phải video!').catch(() => {});
         }
 
-        const resource = createAudioResource(stream, {
+        // Lấy stream audio cực mượt bằng play-dl
+        let streamData = await play.stream(cleanUrl, {
+            discordPlayerCompatibility: true,
+            quality: 2
+        });
+
+        const resource = createAudioResource(streamData.stream, {
+            inputType: streamData.type,
             inlineVolume: true,
             silencePaddingFrames: 5
         });
@@ -68,22 +61,23 @@ async function playStream(query, connection, channel) {
 
         player.on(AudioPlayerStatus.Idle, () => {
             if (isLooping && currentQuery) {
+                console.log('[LOOP] Phát lại bài hát:', currentQuery);
                 playStream(currentQuery, connection, channel);
             }
         });
 
         player.on('error', (err) => {
             console.error('Lỗi phát nhạc player:', err.message);
+            channel.send('❌ Lỗi trình phát âm thanh: ' + err.message).catch(() => {});
         });
     } catch (error) {
-        console.error('Lỗi kết nối stream ytdl:', error.message);
+        console.error('Lỗi play-dl stream:', error.message);
         channel.send('❌ Lỗi: Không thể phát bài hát này!').catch(() => {});
     }
 }
 
-// BẮT BUỘC LÀ 'ready' NÓ MỚI BẬT ONLINE ĐƯỢC
 client.once('ready', () => {
-    console.log(`✅ CON BOT LUNAA ĐÃ ONLINE THÀNH CÔNG: ${client.user.tag}`);
+    console.log(`✅ BOT LUNAA ĐÃ ONLINE THÀNH CÔNG: ${client.user.tag}`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -169,14 +163,9 @@ client.on('messageCreate', async (message) => {
             await playStream(query, connection, message.channel);
 
         } catch (error) {
-// Thay đoạn client.login cũ bằng đoạn này để xem log lỗi chi tiết:
-console.log('Đang tiến hành kết nối bot với Discord...');
+            console.error('Lỗi kết nối:', error);
+        }
+    }
+});
 
-client.login(process.env.DISCORD_TOKEN)
-    .then(() => {
-        console.log('✅ Lệnh login đã được chấp nhận bởi Discord!');
-    })
-    .catch((error) => {
-        console.error('❌ LỖI LOGIN THỰC TẾ:', error);
-    });
-            
+client.login(process.env.DISCORD_TOKEN);
