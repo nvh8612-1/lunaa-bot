@@ -169,10 +169,14 @@ client.on('messageCreate', async (message) => {
             await playStream(query, connection, message.channel);
 
         } catch (error) {
-            console.error('Lỗi kết nối:', error);
-        }
-    }
-});
+// Thay đoạn client.login cũ bằng đoạn này để xem log lỗi chi tiết:
+console.log('Đang tiến hành kết nối bot với Discord...');
 
-client.login(process.env.DISCORD_TOKEN);
- 
+client.login(process.env.DISCORD_TOKEN)
+    .then(() => {
+        console.log('✅ Lệnh login đã được chấp nhận bởi Discord!');
+    })
+    .catch((error) => {
+        console.error('❌ LỖI LOGIN THỰC TẾ:', error);
+    });
+            
