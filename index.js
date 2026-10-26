@@ -166,12 +166,11 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// ĐĂNG NHẬP BOT VÀO DISCORD (Đặt chuẩn ở dòng cuối cùng ngoài cùng)
 console.log('Đang tiến hành kết nối bot với Discord...');
 client.login(process.env.DISCORD_TOKEN)
     .then(() => {
-        console.log('✅ Lệnh login đã được chấp nhận bởi Discord!');
+        console.log('✅ THÀNH CÔNG RỰC RỠ: Discord đã chấp nhận token của Lunaa!');
     })
     .catch((error) => {
-        console.error('❌ LỖI LOGIN THỰC TẾ:', error);
+        console.error('❌ DISCORD TỪ CHỐI LOGIN VÌ LỖI SAU:', error);
     });
