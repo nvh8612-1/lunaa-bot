@@ -2,10 +2,9 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
 const http = require('http');
 
-// Mở một Web Server nhỏ để Render không bị tắt bot (Web Service check)
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is alive and running!');
+    res.end('Bot Lunaa is alive!');
 });
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
@@ -15,8 +14,8 @@ server.listen(PORT, () => {
 const ytdlModule = require('@distube/ytdl-core');
 const ytdl = typeof ytdlModule === 'function' ? ytdlModule : (ytdlModule.Ytdl || ytdlModule.default || ytdlModule);
 
-process.on('unhandledRejection', () => {});
-process.on('uncaughtException', () => {});
+process.on('unhandledRejection', (err) => console.log('Lỗi Unhandled:', err));
+process.on('uncaughtException', (err) => console.log('Lỗi Uncaught:', err));
 
 const client = new Client({
     intents: [
@@ -69,7 +68,6 @@ async function playStream(query, connection, channel) {
 
         player.on(AudioPlayerStatus.Idle, () => {
             if (isLooping && currentQuery) {
-                console.log('[LOOP] Phát lại bài hát:', currentQuery);
                 playStream(currentQuery, connection, channel);
             }
         });
@@ -83,8 +81,9 @@ async function playStream(query, connection, channel) {
     }
 }
 
-client.once('ready', async () => {
-    console.log(`🚀 Bot ${client.user.tag} đã sẵn sàng hoạt động!`);
+// BẮT BUỘC LÀ 'ready' NÓ MỚI BẬT ONLINE ĐƯỢC
+client.once('ready', () => {
+    console.log(`✅ CON BOT LUNAA ĐÃ ONLINE THÀNH CÔNG: ${client.user.tag}`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -176,3 +175,4 @@ client.on('messageCreate', async (message) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+ 
