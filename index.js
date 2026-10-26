@@ -1,5 +1,16 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
+const http = require('http');
+
+// Mở một Web Server nhỏ để Render không bị tắt bot (Web Service check)
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bot is alive and running!');
+});
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`HTTP server đang chạy trên cổng ${PORT}`);
+});
 
 const ytdlModule = require('@distube/ytdl-core');
 const ytdl = typeof ytdlModule === 'function' ? ytdlModule : (ytdlModule.Ytdl || ytdlModule.default || ytdlModule);
