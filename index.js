@@ -1,216 +1,236 @@
-const { Client, GatewayIntentBits, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, getVoiceConnection, AudioPlayerStatus } = require('@discordjs/voice');
-const http = require('http');
-const play = require('play-dl');
 
-// ==================== WEB SERVER 24/7 ====================
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot Lunaa is alive!');
-});
+const ytdlModule = require('@distube/ytdl-core');
+const ytdl = typeof ytdlModule === 'function' ? ytdlModule : (ytdlModule.Ytdl || ytdlModule.default || ytdlModule);
 
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-    console.log(`[SERVER] HTTP server chạy trên cổng ${PORT}`);
-});
+process.on('unhandledRejection', () => {});
+process.on('uncaughtException', () => {});
 
-// ==================== ERROR HANDLING ====================
-process.on('unhandledRejection', (err) => {
-    console.error('[ERROR] Unhandled Rejection:', err);
-});
-
-process.on('uncaughtException', (err) => {
-    console.error('[ERROR] Uncaught Exception:', err);
-});
-
-// ==================== DISCORD CLIENT ====================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.DirectMessages
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
-// ==================== STATE VARIABLES ====================
-let isTargeted = false;
+let isTargeted = false; 
 let isLooping = false;
 let currentQuery = '';
-let targetUser = null;
+let activeConnection = null;
+let currentAudioPlayer = null;
 
-// ==================== PLAY STREAM FUNCTION ====================
+// Hàm chuẩn hóa và làm sạch link YouTube (loại bỏ ?si=... và các tham số theo dõi rác)
+function cleanYouTubeUrl(inputUrl) {
+    try {
+        const urlObj = new URL(inputUrl);
+        if (urlObj.hostname.includes('youtube.com') && urlObj.searchParams.has('v')) {
+            const videoId = urlObj.searchParams.get('v');
+            return `https://www.youtube.com/watch?v=${videoId}`;
+        }
+        if (urlObj.hostname.includes('youtu.be')) {
+            const videoId = urlObj.pathname.slice(1);
+            return `https://www.youtube.com/watch?v=${videoId}`;
+        }
+    } catch (e) {
+        // Trả về nguyên bản nếu không phải URL chuẩn
+    }
+    return inputUrl;
+}
+
 async function playStream(query, connection, channel) {
     try {
-        let cleanUrl = query.trim();
+        const cleanUrl = cleanYouTubeUrl(query);
+        let stream;
         
-        if (!cleanUrl.startsWith('http')) {
-            await channel.send('❌ Link không hợp lệ! Phải bắt đầu bằng `http`').catch(() => {});
-            return;
+        try {
+            if (typeof ytdl === 'function') {
+                stream = ytdl(cleanUrl, {
+                    filter: format => format.hasAudio && !format.hasVideo,
+                    highWaterMark: 1 << 25,
+                    quality: 'highestaudio'
+                });
+            } else {
+                const ytdlInstance = new ytdlModule.Ytdl();
+                stream = ytdlInstance.download(cleanUrl, {
+                    filter: format => format.hasAudio && !format.hasVideo,
+                    highWaterMark: 1 << 25,
+                    quality: 'highestaudio'
+                });
+            }
+        } catch (err) {
+            const ytdlInstance = new ytdlModule.Ytdl();
+            stream = ytdlInstance.download(cleanUrl, {
+                filter: format => format.hasAudio && !format.hasVideo,
+                highWaterMark: 1 << 25,
+                quality: 'highestaudio'
+            });
         }
 
-        console.log('[STREAM] Đang tải từ:', cleanUrl);
-
-        const validation = play.yt_validate(cleanUrl);
-        if (validation !== 'video') {
-            await channel.send(`❌ Link YouTube không hợp lệ! (${validation})`).catch(() => {});
-            return;
-        }
-
-        let streamData = await play.stream(cleanUrl, {
-            discordPlayerCompatibility: true,
-            quality: 2
-        });
-
-        if (!streamData || !streamData.stream) {
-            await channel.send('❌ Không thể lấy stream từ link này!').catch(() => {});
-            return;
-        }
-
-        const resource = createAudioResource(streamData.stream, {
-            inputType: streamData.type,
+        const resource = createAudioResource(stream, {
             inlineVolume: true,
             silencePaddingFrames: 5
         });
-
-        resource.volume.setVolume(0.8);
+        resource.volume.setVolume(0.85);
 
         const player = createAudioPlayer();
+        currentAudioPlayer = player;
         player.play(resource);
         connection.subscribe(player);
 
-        console.log('[PLAY] Phát nhạc thành công');
-
-        player.on(AudioPlayerStatus.Idle, async () => {
-            console.log('[PLAYER] Nhạc kết thúc');
+        player.on(AudioPlayerStatus.Idle, () => {
             if (isLooping && currentQuery) {
-                console.log('[LOOP] Phát lại bài hát');
-                await playStream(currentQuery, connection, channel);
+                console.log('[LOOP] Phát lại bài hát vô hạn...');
+                playStream(currentQuery, connection, channel);
             }
         });
 
         player.on('error', (err) => {
-            console.error('[PLAYER ERROR]', err.message);
-            channel.send(`❌ Lỗi trình phát: ${err.message}`).catch(() => {});
+            console.error('Lỗi phát nhạc:', err);
         });
-
     } catch (error) {
-        console.error('[STREAM ERROR]', error.message);
-        await channel.send(`❌ Lỗi: ${error.message}`).catch(() => {});
+        console.error('Lỗi kết nối stream:', error);
     }
 }
 
-// ==================== DISCORD EVENTS ====================
-client.once('ready', () => {
-    console.log('\n' + '='.repeat(50));
-    console.log(`✅ BOT ONLINE THÀNH CÔNG`);
-    console.log(`📱 Tag: ${client.user.tag}`);
-    console.log(`🏘️  Servers: ${client.guilds.cache.size}`);
-    console.log('='.repeat(50) + '\n');
-    
-    // Sửa lỗi ActivityType v14
-    client.user.setActivity('!help | Lunaa Music', { type: ActivityType.Watching });
-});
+client.once('ready', async () => {
+    console.log(`🚀 Bot ${client.user.tag} đã sẵn sàng hoạt động!`);
 
-client.on('error', (error) => {
-    console.error('[CLIENT ERROR]', error);
+    try {
+        const targetChannel = client.channels.cache.find(
+            channel => channel.isTextBased() && channel.name === 'bot-lunaa-music'
+        );
+        if (targetChannel) {
+            await targetChannel.send('Đã kết nối thành công');
+            console.log('✅ Đã gửi thông báo kết nối vào kênh #bot-lunaa-music');
+        }
+    } catch (error) {
+        console.error('Không thể gửi tin nhắn tự động:', error);
+    }
 });
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
-
     const content = message.content.trim();
+    const senderName = message.author.tag || message.author.username;
 
-    // ========== !TARGET / !TAGET ==========
-    if (content === '!target' || content === '!taget') {
+    console.log(`[LOG] Người dùng ${senderName} đã gửi: "${content}"`);
+
+    // 1. !taget: Nhận diện người chơi
+    if (content === '!taget') {
         isTargeted = !isTargeted;
-        const playerName = message.member?.displayName || message.author.username;
-        
+        const playerName = message.member ? message.member.displayName : message.author.username;
         if (isTargeted) {
-            targetUser = message.author.id;
-            return message.reply(`🎵 Lắng nghe người chơi: **${playerName}**`).catch(() => {});
+            return message.channel.send(`Lắng Nghe Người Chơi "${playerName}"`).catch(() => {});
         } else {
-            targetUser = null;
-            return message.reply(`⛔ Đã ngắt lắng nghe.`).catch(() => {});
+            return message.channel.send(`Đã ngắt lắng nghe "${playerName}"`).catch(() => {});
         }
     }
 
-    // ========== !JOIN / !SEVER / !SERVER ==========
-    if (content === '!join' || content === '!sever' || content === '!server') {
+    // 2. !sever / !server: Gọi bot vào phòng thoại
+    if (content.startsWith('!sever') || content.startsWith('!server')) {
         const voiceChannel = message.member?.voice?.channel;
-        
         if (!voiceChannel) {
-            return message.reply('❌ Bạn phải vào phòng thoại trước!').catch(() => {});
+            return message.channel.send('❌ Vào phòng thoại trước đã!').catch(() => {});
         }
-
         try {
-            joinVoiceChannel({
+            activeConnection = joinVoiceChannel({
                 channelId: voiceChannel.id,
                 guildId: message.guild.id,
                 adapterCreator: message.guild.voiceAdapterCreator,
                 selfDeaf: false,
                 selfMute: false,
             });
-            return message.reply('✅ Đã vào phòng thoại!').catch(() => {});
+            return message.channel.send('Đã Vào ✓').catch(() => {});
         } catch (error) {
-            console.error('[JOIN ERROR]', error.message);
-            return message.reply(`❌ Lỗi vào phòng: ${error.message}`).catch(() => {});
+            return message.channel.send('Sự cố .!!..').catch(() => {});
         }
     }
 
-    // ========== !LOOP ==========
+    // 3. !loop: Bật/tắt lặp lại vô hạn
     if (content === '!loop') {
         isLooping = !isLooping;
-        return message.reply(isLooping ? '🔁 Bật chế độ lặp lại!' : '🔁 Tắt chế độ lặp lại.').catch(() => {});
+        return message.channel.send(isLooping ? '🔁 Đã bật chế độ lặp lại vô hạn!' : '🔁 Đã tắt chế độ lặp lại.').catch(() => {});
     }
 
-    // ========== !STOP / !PAUSE ==========
-    if (content === '!stop' || content === '!pause') {
+    // 4. !stop: Dừng nhạc hiện tại
+    if (content === '!stop') {
         isLooping = false;
         const connection = getVoiceConnection(message.guild.id);
-        
-        if (!connection) {
-            return message.reply('❌ Bot không ở trong phòng!').catch(() => {});
-        }
-
+        if (!connection) return message.channel.send('❌ Bot không ở trong phòng!').catch(() => {});
         try {
-            const player = connection.state?.subscription?.player;
-            if (player) {
-                player.stop(true);
-            }
-            return message.reply('⏹️ Đã dừng nhạc!').catch(() => {});
-        } catch (error) {
-            console.error('[STOP ERROR]', error.message);
-            return message.reply(`❌ Lỗi dừng nhạc: ${error.message}`).catch(() => {});
-        }
+            if (currentAudioPlayer) currentAudioPlayer.stop();
+            return message.channel.send('Dừng Nhạc ✓').catch(() => {});
+        } catch (error) {}
     }
 
-    // ========== !PLAY ==========
+    // 5. !pause: Tạm dừng phát nhạc
+    if (content === '!pause') {
+        if (currentAudioPlayer) {
+            currentAudioPlayer.pause();
+            return message.channel.send('⏸️ Đã tạm dừng nhạc!').catch(() => {});
+        }
+        return message.channel.send('❌ Không có bài hát nào đang phát!').catch(() => {});
+    }
+
+    // 6. !resume: Tiếp tục phát nhạc
+    if (content === '!resume') {
+        if (currentAudioPlayer) {
+            currentAudioPlayer.unpause();
+            return message.channel.send('▶️ Đã tiếp tục phát nhạc!').catch(() => {});
+        }
+        return message.channel.send('❌ Không có bài hát nào tạm dừng!').catch(() => {});
+    }
+
+    // 7. !stopsession: Dừng hoàn toàn và rời phòng
+    if (content === '!stopsession') {
+        isLooping = false;
+        currentQuery = '';
+        const connection = getVoiceConnection(message.guild.id);
+        if (!connection) return message.channel.send('❌ Bot không ở trong phòng thoại!').catch(() => {});
+        try {
+            if (currentAudioPlayer) currentAudioPlayer.stop();
+            connection.destroy();
+            return message.channel.send('🛑 Đã ngắt kết nối và rời phòng thoại hoàn toàn!').catch(() => {});
+        } catch (error) {}
+    }
+
+    // 8. !help: Xem danh sách lệnh
+    if (content === '!help') {
+        return message.channel.send(
+            '📜 **Danh sách lệnh Bot Lunaa:**\n' +
+            '`!taget` - Nhận diện người chơi\n' +
+            '`!sever` - Gọi bot vào phòng thoại\n' +
+            '`!play <link>` - Phát nhạc YouTube\n' +
+            '`!loop` - Bật/tắt lặp lại vô hạn\n' +
+            '`!pause` - Tạm dừng nhạc\n' +
+            '`!resume` - Tiếp tục phát nhạc\n' +
+            '`!stop` - Dừng bài hát hiện tại\n' +
+            '`!stopsession` - Cho bot rời phòng thoại'
+        ).catch(() => {});
+    }
+
+    // 9. !play: Phát nhạc từ link YouTube
     if (content.startsWith('!play')) {
         if (!isTargeted) {
-            return message.reply('❌ Gõ `!target` trước!').catch(() => {});
+            return message.channel.send('❌ Chưa gọi `!taget`!').catch(() => {});
         }
-
-        if (message.author.id !== targetUser) {
-            return message.reply('⛔ Chỉ người được target mới có thể dùng `!play`!').catch(() => {});
-        }
-
         let query = content.slice(5).trim();
-        if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
-            query = query.slice(1, -1).trim();
+        
+        if (query.endsWith('"')) {
+            query = query.slice(0, -1).trim();
         }
 
-        if (!query || !query.startsWith('http')) {
-            return message.reply('❌ Cần link YouTube hợp lệ sau `!play`!').catch(() => {});
-        }
+        if (!query) return message.channel.send('❌ Thiếu link YouTube!').catch(() => {});
 
         const voiceChannel = message.member?.voice?.channel;
         if (!voiceChannel) {
-            return message.reply('❌ Bạn phải vào phòng thoại!').catch(() => {});
+            return message.channel.send('❌ Vào phòng thoại trước!').catch(() => {});
         }
 
-        message.reply('🎶 Đang mở nhạc...').catch(() => {});
+        await message.channel.send('Đã Mở Nhạc🎶').catch(() => {});
 
         try {
             const connection = joinVoiceChannel({
@@ -220,46 +240,18 @@ client.on('messageCreate', async (message) => {
                 selfDeaf: false,
                 selfMute: false,
             });
+            activeConnection = connection;
 
-            currentQuery = query;
-            playStream(query, connection, message.channel);
+            const cleanUrl = cleanYouTubeUrl(query);
+            if (!cleanUrl.startsWith('http')) return;
+
+            currentQuery = cleanUrl; 
+            await playStream(cleanUrl, connection, message.channel);
+
         } catch (error) {
-            console.error('[PLAY ERROR]', error);
-            message.reply(`❌ Lỗi: ${error.message}`).catch(() => {});
+            console.error('Lỗi kết nối:', error);
         }
-    }
-
-    // ========== !HELP ==========
-    if (content === '!help') {
-        const helpText = `
-\`\`\`
-📖 DANH SÁCH LỆNH:
-━━━━━━━━━━━━━━━━━━━━━
-!target              → Bật/tắt lắng nghe người chơi
-!play <link>         → Phát nhạc từ YouTube
-!join                → Vào phòng thoại
-!stop                → Dừng nhạc
-!loop                → Bật/tắt lặp lại
-━━━━━━━━━━━━━━━━━━━━━
-\`\`\`
-        `;
-        return message.reply(helpText).catch(() => {});
     }
 });
 
-// ==================== LOGIN ====================
-const token = process.env.DISCORD_TOKEN;
-if (!token) {
-    console.error('❌ LỖI: Không tìm thấy DISCORD_TOKEN!');
-    process.exit(1);
-}
-
-console.log('[INIT] Đang gửi lệnh đăng nhập tới Discord...');
-client.login(token)
-    .then(() => {
-        console.log('[LOGIN] ✅ Kết nối Gateway thành công!');
-    })
-    .catch((error) => {
-        console.error('[LOGIN] ❌ LỖI ĐĂNG NHẬP:', error);
-        process.exit(1);
-    });
+client.login('process.env.TOKEN');
